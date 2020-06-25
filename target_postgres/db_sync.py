@@ -119,6 +119,9 @@ class DbSync:
         self.rejected_count = 0
 
     def open_connection(self):
+        if self.connection_config['url']:
+            return psycopg2.connect(self.connection_config['url'])
+
         conn_string = "host='{}' dbname='{}' user='{}' password='{}' port='{}'".format(
             self.connection_config['host'],
             self.connection_config['dbname'],
