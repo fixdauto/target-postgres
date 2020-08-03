@@ -14,12 +14,17 @@ from tempfile import NamedTemporaryFile
 
 import pkg_resources
 from jsonschema import Draft4Validator, FormatChecker
+import decimal
 from decimal import Decimal
 import singer
 from target_postgres.db_sync import DbSync
 
 logger = singer.get_logger()
 
+# This value comes from the precision definition of
+# Postgres numeric/decimal types:
+# https://www.postgresql.org/docs/9.1/datatype-numeric.html
+decimal.getcontext().prec = 147455
 
 def float_to_decimal(value):
     '''Walk the given data structure and turn all instances of float into
