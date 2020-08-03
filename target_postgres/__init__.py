@@ -2,6 +2,7 @@
 
 import argparse
 import io
+import math
 import os
 import sys
 import json
@@ -21,11 +22,6 @@ from target_postgres.db_sync import DbSync
 
 logger = singer.get_logger()
 
-# This value comes from the precision definition of
-# Postgres numeric/decimal types:
-# https://www.postgresql.org/docs/9.1/datatype-numeric.html
-decimal.getcontext().prec = 147455
-
 def float_to_decimal(value):
     '''Walk the given data structure and turn all instances of float into
     double.'''
@@ -36,6 +32,38 @@ def float_to_decimal(value):
     if isinstance(value, dict):
         return {k: float_to_decimal(v) for k, v in value.items()}
     return value
+
+def numeric_schema_with_precision(schema):
+    if 'type' not in schema:
+        return False
+    if isinstance(schema['type'], list):
+        if 'number' not in schema['type']:
+            return False
+    elif schema['type'] != 'number':
+        return False
+    if 'multipleOf' in schema:
+        return True
+    return 'minimum' in schema or 'maximum' in schema
+
+
+def walk_schema_for_numeric_precision(schema):
+    if isinstance(schema, list):
+        for v in schema:
+            walk_schema_for_numeric_precision(v)
+    elif isinstance(schema, dict):
+        if numeric_schema_with_precision(schema):
+            precision = round(max(
+                len(Decimal(schema.get('minimum', '0')).as_tuple().digits),
+                len(Decimal(schema.get('maximum', '0')).as_tuple().digits),
+                abs(math.log10(schema.get('multipleOf', 1))),
+            ))
+            if decimal.getcontext().prec < precision:
+                logger.debug('Setting decimal precision to {}'.format(precision))
+                decimal.getcontext().prec = precision
+        else:
+            for v in schema.values():
+                walk_schema_for_numeric_precision(v)
+
 
 def emit_state(state):
     if state is not None:
@@ -111,6 +139,7 @@ def persist_lines(config, lines):
             stream = o['stream']
             schemas[stream] = o
             schema = float_to_decimal(o['schema'])
+            walk_schema_for_numeric_precision(schema)
             validators[stream] = Draft4Validator(schema, format_checker=FormatChecker())
             if 'key_properties' not in o:
                 raise Exception("key_properties field is required")
