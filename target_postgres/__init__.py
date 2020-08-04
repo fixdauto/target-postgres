@@ -52,11 +52,14 @@ def walk_schema_for_numeric_precision(schema):
             walk_schema_for_numeric_precision(v)
     elif isinstance(schema, dict):
         if numeric_schema_with_precision(schema):
-            precision = round(max(
-                len(Decimal(schema.get('minimum', '0')).as_tuple().digits),
-                len(Decimal(schema.get('maximum', '0')).as_tuple().digits),
-                abs(math.log10(schema.get('multipleOf', 1))),
-            ))
+            def get_precision(key):
+                v = math.log10(schema.get(key, 1))
+                if v < 0:
+                    return round(math.floor(v))
+                return round(math.ceil(v))
+            scale = -1 * get_precision('multipleOf')
+            digits = max(get_precision('minimum'), get_precision('maximum'))
+            precision = digits + scale
             if decimal.getcontext().prec < precision:
                 logger.debug('Setting decimal precision to {}'.format(precision))
                 decimal.getcontext().prec = precision
